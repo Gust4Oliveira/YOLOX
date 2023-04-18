@@ -6,7 +6,6 @@ import argparse
 import os
 import time
 from loguru import logger
-
 import cv2
 
 import torch
@@ -17,7 +16,6 @@ from yolox.exp import get_exp
 from yolox.utils import fuse_model, get_model_info, postprocess, vis
 
 IMAGE_EXT = [".jpg", ".jpeg", ".webp", ".bmp", ".png"]
-
 
 def make_parser():
     parser = argparse.ArgumentParser("YOLOX Demo!")
@@ -108,6 +106,7 @@ class Predictor(object):
         device="cpu",
         fp16=False,
         legacy=False,
+        ckpt = None
     ):
         self.model = model
         self.cls_names = cls_names
@@ -165,7 +164,7 @@ class Predictor(object):
             logger.info("Infer time: {:.4f}s".format(time.time() - t0))
         return outputs, img_info
 
-    def visual(self, output, img_info, cls_conf=0.35):
+    def visual(self, output, img_info, cls_conf=0.35, vis_folder= None):
         ratio = img_info["ratio"]
         img = img_info["raw_img"]
         if output is None:
@@ -180,7 +179,7 @@ class Predictor(object):
         cls = output[:, 6]
         scores = output[:, 4] * output[:, 5]
 
-        vis_res = vis(img, bboxes, scores, cls, cls_conf, self.cls_names)
+        vis_res = vis(img, bboxes, scores, cls, cls_conf, self.cls_names, vis_folder)
         return vis_res
 
 
@@ -192,7 +191,7 @@ def image_demo(predictor, vis_folder, path, current_time, save_result):
     files.sort()
     for image_name in files:
         outputs, img_info = predictor.inference(image_name)
-        result_image = predictor.visual(outputs[0], img_info, predictor.confthre)
+        result_image = predictor.visual(outputs[0], img_info, predictor.confthre, vis_folder)
         if save_result:
             save_folder = os.path.join(
                 vis_folder, time.strftime("%Y_%m_%d_%H_%M_%S", current_time)
@@ -247,12 +246,11 @@ def main(exp, args):
 
     file_name = os.path.join(exp.output_dir, args.experiment_name)
     os.makedirs(file_name, exist_ok=True)
-
     vis_folder = None
     if args.save_result:
         vis_folder = os.path.join(file_name, "vis_res")
         os.makedirs(vis_folder, exist_ok=True)
-
+    
     if args.trt:
         args.device = "gpu"
 
@@ -304,7 +302,7 @@ def main(exp, args):
 
     predictor = Predictor(
         model, exp, COCO_CLASSES, trt_file, decoder,
-        args.device, args.fp16, args.legacy,
+        args.device, args.fp16, args.legacy, args.ckpt
     )
     current_time = time.localtime()
     if args.demo == "image":
@@ -316,5 +314,7 @@ def main(exp, args):
 if __name__ == "__main__":
     args = make_parser().parse_args()
     exp = get_exp(args.exp_file, args.name)
+    
+    logger.add(f"{args.ckpt}.log")
 
     main(exp, args)
